@@ -135,7 +135,7 @@ function RatingInput({ label, value, onChange }) {
 }
 
 // ─────────────────────────────────────────────────────────
-// Map Picker
+// Map Picker (with location search + fullscreen)
 // ─────────────────────────────────────────────────────────
 
 function MapPicker({ latitude, longitude, onSelect }) {
@@ -144,33 +144,186 @@ function MapPicker({ latitude, longitude, onSelect }) {
         latitude: latitude || 9.9312,
         zoom: latitude ? 14 : 10,
     });
+    const [query, setQuery] = useState("");
+    const [suggestions, setSuggestions] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const debounceRef = useRef(null);
+
+    const fetchSuggestions = useCallback(async (value) => {
+        if (!value.trim()) { setSuggestions([]); return; }
+        setIsSearching(true);
+        try {
+            const res = await fetch(
+                `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value)}.json` +
+                `?access_token=${MAPBOX_TOKEN}&autocomplete=true&limit=5`
+            );
+            const data = await res.json();
+            setSuggestions(data.features || []);
+        } catch {
+            setSuggestions([]);
+        } finally {
+            setIsSearching(false);
+        }
+    }, []);
+
+    const handleSearchChange = (e) => {
+        const value = e.target.value;
+        setQuery(value);
+        clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => fetchSuggestions(value), 300);
+    };
+
+    const handleSuggestionClick = (feature) => {
+        const [lng, lat] = feature.center;
+        setViewState({ longitude: lng, latitude: lat, zoom: 14 });
+        setQuery(feature.place_name);
+        setSuggestions([]);
+    };
 
     const handleClick = useCallback((e) => {
         const { lng, lat } = e.lngLat;
         onSelect(lat.toFixed(6), lng.toFixed(6));
     }, [onSelect]);
 
-    return (
-        <div className="rounded-xl overflow-hidden border border-[#1e293b]" style={{ height: 240 }}>
-            <Map
-                {...viewState}
-                onMove={(e) => setViewState(e.viewState)}
-                onClick={handleClick}
-                mapboxAccessToken={MAPBOX_TOKEN}
-                mapStyle="mapbox://styles/mapbox/dark-v11"
-                style={{ width: "100%", height: "100%" }}
-            >
-                <NavigationControl position="top-right" />
-                {latitude && longitude && (
-                    <Marker latitude={parseFloat(latitude)} longitude={parseFloat(longitude)}>
-                        <div className="w-5 h-5 bg-blue-500 rounded-full border-2 border-white" />
-                    </Marker>
+    // Close fullscreen on Escape
+    useEffect(() => {
+        const handler = (e) => { if (e.key === "Escape") setIsFullscreen(false); };
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    }, []);
+
+    const mapHeight = isFullscreen ? "100%" : 240;
+
+    const inner = (
+        <div className={`flex flex-col rounded-xl overflow-hidden border border-[#1e293b] ${isFullscreen ? "w-full h-full" : ""}`}>
+            {/* Search bar */}
+            <div className="relative bg-[#0f172a] p-2 shrink-0">
+                <div className="relative flex items-center gap-2">
+                    {/* Search input */}
+                    <div className="relative flex-1">
+                        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"
+                            fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                        </svg>
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={handleSearchChange}
+                            placeholder="Search location…"
+                            className="w-full bg-[#1a1f2e] text-slate-200 placeholder-slate-500 text-sm
+                                       rounded-lg pl-9 pr-4 py-2 outline-none border border-[#1e293b]
+                                       focus:border-blue-500 transition-colors"
+                        />
+                        {isSearching && (
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 border-2
+                                            border-blue-400 border-t-transparent rounded-full animate-spin" />
+                        )}
+                    </div>
+
+                    {/* Fullscreen toggle */}
+                    <button
+                        type="button"
+                        onClick={() => setIsFullscreen((p) => !p)}
+                        title={isFullscreen ? "Exit fullscreen" : "Expand map"}
+                        className="shrink-0 w-8 h-8 flex items-center justify-center bg-[#1a1f2e]
+                                   border border-[#1e293b] rounded-lg text-slate-400
+                                   hover:text-white hover:border-blue-500 transition-colors"
+                    >
+                        {isFullscreen ? (
+                            /* compress icon */
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                    d="M9 9L4 4m0 0v4m0-4h4M15 9l5-5m0 0v4m0-4h-4M9 15l-5 5m0 0v-4m0 4h4M15 15l5 5m0 0v-4m0 4h-4" />
+                            </svg>
+                        ) : (
+                            /* expand icon */
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                    d="M4 8V4m0 0h4M4 4l5 5M20 8V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5M20 16v4m0 0h-4m4 0l-5-5" />
+                            </svg>
+                        )}
+                    </button>
+                </div>
+
+                {/* Suggestions dropdown */}
+                {suggestions.length > 0 && (
+                    <ul className="absolute left-2 right-2 top-full mt-1 z-10 bg-[#1a1f2e]
+                                   border border-[#1e293b] rounded-lg overflow-hidden shadow-xl">
+                        {suggestions.map((feat) => (
+                            <li key={feat.id}>
+                                <button
+                                    type="button"
+                                    onClick={() => handleSuggestionClick(feat)}
+                                    className="w-full text-left px-4 py-2.5 text-sm text-slate-300
+                                               hover:bg-[#0f172a] flex items-start gap-2 transition-colors"
+                                >
+                                    <svg className="w-4 h-4 mt-0.5 shrink-0 text-slate-500"
+                                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                            d="M17.657 16.657L13.414 20.9a1.998 1.998 0 0 1-2.827 0l-4.244-4.243a8 8 0 1 1 11.314 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                            d="M15 11a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+                                    </svg>
+                                    <span className="line-clamp-1">{feat.place_name}</span>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
                 )}
-            </Map>
+            </div>
+
+            {/* Map */}
+            <div style={{ height: mapHeight, flex: isFullscreen ? 1 : "none" }}>
+                <Map
+                    {...viewState}
+                    onMove={(e) => setViewState(e.viewState)}
+                    onClick={handleClick}
+                    mapboxAccessToken={MAPBOX_TOKEN}
+                    mapStyle="mapbox://styles/mapbox/dark-v11"
+                    style={{ width: "100%", height: "100%" }}
+                >
+                    <NavigationControl position="top-right" />
+                    {latitude && longitude && (
+                        <Marker latitude={parseFloat(latitude)} longitude={parseFloat(longitude)}>
+                            <div className="w-5 h-5 bg-blue-500 rounded-full border-2 border-white shadow-lg" />
+                        </Marker>
+                    )}
+                </Map>
+            </div>
+
+            {/* Fullscreen hint */}
+            {isFullscreen && (
+                <div className="shrink-0 px-4 py-2.5 bg-[#0f172a] border-t border-[#1e293b]
+                                flex items-center justify-between">
+                    <span className="text-xs text-slate-500">Click anywhere on the map to drop a pin</span>
+                    <button
+                        type="button"
+                        onClick={() => setIsFullscreen(false)}
+                        className="text-xs text-slate-400 hover:text-white px-3 py-1
+                                   bg-[#1a1f2e] rounded-lg border border-[#1e293b] transition-colors"
+                    >
+                        Done
+                    </button>
+                </div>
+            )}
         </div>
     );
-}
 
+    if (isFullscreen) {
+        return (
+            <div className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-6">
+                <div className="w-full max-w-5xl h-[85vh] flex flex-col rounded-xl overflow-hidden
+                                border border-[#1e293b] shadow-2xl">
+                    {inner}
+                </div>
+            </div>
+        );
+    }
+
+    return inner;
+}
 // ─────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────

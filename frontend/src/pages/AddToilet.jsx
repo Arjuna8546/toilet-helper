@@ -181,7 +181,7 @@ function RatingInput({ label, value, onChange }) {
 }
 
 // ─────────────────────────────────────────────────────────
-// Map Picker
+// Map Picker (with location search)
 // ─────────────────────────────────────────────────────────
 
 function MapPicker({ latitude, longitude, onSelect }) {
@@ -190,6 +190,44 @@ function MapPicker({ latitude, longitude, onSelect }) {
         latitude: latitude || 9.9312,
         zoom: latitude ? 14 : 10,
     });
+    const [query, setQuery] = useState("");
+    const [suggestions, setSuggestions] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const debounceRef = useRef(null);
+
+    const fetchSuggestions = useCallback(async (value) => {
+        if (!value.trim()) {
+            setSuggestions([]);
+            return;
+        }
+        setIsSearching(true);
+        try {
+            const res = await fetch(
+                `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value)}.json` +
+                `?access_token=${MAPBOX_TOKEN}&autocomplete=true&limit=5`
+            );
+            const data = await res.json();
+            setSuggestions(data.features || []);
+        } catch {
+            setSuggestions([]);
+        } finally {
+            setIsSearching(false);
+        }
+    }, []);
+
+    const handleSearchChange = (e) => {
+        const value = e.target.value;
+        setQuery(value);
+        clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => fetchSuggestions(value), 300);
+    };
+
+    const handleSuggestionClick = (feature) => {
+        const [lng, lat] = feature.center;
+        setViewState({ longitude: lng, latitude: lat, zoom: 14 });
+        setQuery(feature.place_name);
+        setSuggestions([]);
+    };
 
     const handleClick = useCallback(
         (e) => {
@@ -200,29 +238,83 @@ function MapPicker({ latitude, longitude, onSelect }) {
     );
 
     return (
-        <div
-            className="rounded-xl overflow-hidden border border-[#1e293b]"
-            style={{ height: 300 }}
-        >
-            <Map
-                {...viewState}
-                onMove={(e) => setViewState(e.viewState)}
-                onClick={handleClick}
-                mapboxAccessToken={MAPBOX_TOKEN}
-                mapStyle="mapbox://styles/mapbox/dark-v11"
-                style={{ width: "100%", height: "100%" }}
-            >
-                <NavigationControl position="top-right" />
-
-                {latitude && longitude && (
-                    <Marker
-                        latitude={parseFloat(latitude)}
-                        longitude={parseFloat(longitude)}
+        <div className="rounded-xl overflow-hidden border border-[#1e293b]">
+            {/* Search bar */}
+            <div className="relative bg-[#0f172a] p-2">
+                <div className="relative flex items-center">
+                    <svg
+                        className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none"
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
                     >
-                        <div className="w-5 h-5 bg-blue-500 rounded-full border-2 border-white" />
-                    </Marker>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                    </svg>
+                    <input
+                        type="text"
+                        value={query}
+                        onChange={handleSearchChange}
+                        placeholder="Search location…"
+                        className="w-full bg-[#1a1f2e] text-slate-200 placeholder-slate-500
+                                   text-sm rounded-lg pl-9 pr-4 py-2 outline-none
+                                   border border-[#1e293b] focus:border-blue-500 transition-colors"
+                    />
+                    {isSearching && (
+                        <div className="absolute right-3 w-4 h-4 border-2 border-blue-400
+                                        border-t-transparent rounded-full animate-spin" />
+                    )}
+                </div>
+
+                {/* Suggestions dropdown */}
+                {suggestions.length > 0 && (
+                    <ul className="absolute left-2 right-2 top-full mt-1 z-10
+                                   bg-[#1a1f2e] border border-[#1e293b] rounded-lg
+                                   overflow-hidden shadow-xl">
+                        {suggestions.map((feat) => (
+                            <li key={feat.id}>
+                                <button
+                                    type="button"
+                                    onClick={() => handleSuggestionClick(feat)}
+                                    className="w-full text-left px-4 py-2.5 text-sm
+                                               text-slate-300 hover:bg-[#0f172a]
+                                               flex items-start gap-2 transition-colors"
+                                >
+                                    <svg className="w-4 h-4 mt-0.5 shrink-0 text-slate-500"
+                                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M17.657 16.657L13.414 20.9a1.998 1.998 0 0 1-2.827 0l-4.244-4.243a8 8 0 1 1 11.314 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round"
+                                            strokeWidth={2} d="M15 11a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+                                    </svg>
+                                    <span className="line-clamp-1">{feat.place_name}</span>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
                 )}
-            </Map>
+            </div>
+
+            {/* Map */}
+            <div style={{ height: 300 }}>
+                <Map
+                    {...viewState}
+                    onMove={(e) => setViewState(e.viewState)}
+                    onClick={handleClick}
+                    mapboxAccessToken={MAPBOX_TOKEN}
+                    mapStyle="mapbox://styles/mapbox/dark-v11"
+                    style={{ width: "100%", height: "100%" }}
+                >
+                    <NavigationControl position="top-right" />
+                    {latitude && longitude && (
+                        <Marker
+                            latitude={parseFloat(latitude)}
+                            longitude={parseFloat(longitude)}
+                        >
+                            <div className="w-5 h-5 bg-blue-500 rounded-full border-2 border-white" />
+                        </Marker>
+                    )}
+                </Map>
+            </div>
         </div>
     );
 }

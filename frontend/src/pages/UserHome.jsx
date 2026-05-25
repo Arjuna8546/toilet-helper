@@ -1,6 +1,6 @@
 // src/pages/SuperUserHome.jsx
-// Requires: mapbox-gl, @mapbox/mapbox-gl-geocoder, react-redux
-// npm install mapbox-gl @mapbox/mapbox-gl-geocoder
+// Requires: mapbox-gl, @mapbox/mapbox-gl-geocoder, react-redux, lucide-react
+// npm install mapbox-gl @mapbox/mapbox-gl-geocoder lucide-react
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
@@ -8,16 +8,22 @@ import { useNavigate } from "react-router-dom";
 import mapboxgl from "mapbox-gl";
 import MapboxGeocoder from "@mapbox/mapbox-gl-geocoder";
 import { logout } from "../features/auth/authSlice";
-import { fetchToiletsInBounds, fetchNearbyToilets } from "../services/toiletService";
+import { fetchToiletsInBounds } from "../services/toiletService";
 
 import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css";
 
-// ── Replace with your Mapbox public token ──────────────────────────────────
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN 
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
-// Default fallback: Ernakulam, Kerala
 const ERNAKULAM = { lat: 9.9816, lng: 76.2999 };
+
+// ── Lucide Toilet icon as an inline SVG string for Mapbox DOM markers ──────
+// Sourced from lucide-react's Toilet icon paths (MIT licensed)
+const TOILET_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M6 2h8a2 2 0 0 1 2 2v2a6 6 0 0 1-6 6 6 6 0 0 1-6-6V4a2 2 0 0 1 2-2Z"/>
+  <path d="M4 8a6 6 0 0 0 5 5.92V16H7l-1 6h10l-1-6h-2v-2.08A6 6 0 0 0 18 8"/>
+  <line x1="12" y1="2" x2="12" y2="4"/>
+</svg>`;
 
 // ── Star rating helper ─────────────────────────────────────────────────────
 function Stars({ rating }) {
@@ -49,10 +55,10 @@ function DistanceBadge({ metres }) {
 // ── Toilet card in sidebar ─────────────────────────────────────────────────
 function ToiletCard({ toilet, isActive, onClick }) {
   const features = [
-    toilet.is_accessible && "♿ Accessible",
-    toilet.has_baby_changing && "👶 Baby change",
-    toilet.is_free && "🆓 Free",
-    !toilet.is_free && toilet.fee && `💰 ₹${toilet.fee}`,
+    toilet.is_accessible && "Accessible",
+    toilet.has_baby_changing && "Baby change",
+    toilet.is_free && "Free",
+    !toilet.is_free && toilet.fee && `₹${toilet.fee}`,
   ].filter(Boolean);
 
   return (
@@ -82,9 +88,9 @@ function ToiletCard({ toilet, isActive, onClick }) {
         <DistanceBadge metres={toilet.distance_metres} />
       </div>
 
-      {/* Rating */}
+      {/* Rating — uses avg_overall from API */}
       <div style={{ marginTop: 8 }}>
-        <Stars rating={toilet.average_rating} />
+        <Stars rating={toilet.avg_overall} />
         {toilet.review_count > 0 && (
           <span style={{ color: "#9ca3af", fontSize: 11, marginLeft: 4 }}>
             ({toilet.review_count} review{toilet.review_count !== 1 ? "s" : ""})
@@ -106,31 +112,48 @@ function ToiletCard({ toilet, isActive, onClick }) {
         </div>
       )}
 
-      {/* Open/closed */}
+      {/* Opening hours */}
       {toilet.opening_hours && (
         <div style={{ marginTop: 8, fontSize: 11, color: "#6b7280" }}>
           🕐 {toilet.opening_hours}
         </div>
       )}
+      
     </div>
   );
 }
 
-// ── Popup marker content (inline HTML for Mapbox) ─────────────────────────
+// ── Popup HTML for Mapbox markers ─────────────────────────────────────────
+// Uses avg_overall (matching API response) and renders filled + empty stars
 function buildPopupHTML(toilet) {
-  const dist = toilet.distance_metres != null
-    ? (toilet.distance_metres < 1000
-      ? `${toilet.distance_metres} m`
-      : `${(toilet.distance_metres / 1000).toFixed(1)} km`)
-    : "";
-  const stars = "★".repeat(Math.round(parseFloat(toilet.average_rating) || 0));
+  const dist =
+    toilet.distance_metres != null
+      ? toilet.distance_metres < 1000
+        ? `${toilet.distance_metres} m`
+        : `${(toilet.distance_metres / 1000).toFixed(1)} km`
+      : "";
+
+  const rating = parseFloat(toilet.avg_overall) || 0;
+  const filled = Math.round(rating);
+  const stars = "★".repeat(filled) + "☆".repeat(5 - filled);
+  const ratingLabel = rating > 0 ? rating.toFixed(1) : "No ratings";
+
   return `
     <div style="font-family:'DM Sans',sans-serif;min-width:200px;padding:4px">
       <div style="font-weight:700;font-size:14px;color:#111827;margin-bottom:4px">${toilet.name}</div>
-      ${toilet.address ? `<div style="color:#6b7280;font-size:12px;margin-bottom:6px">${toilet.address}</div>` : ""}
-      <div style="color:#f59e0b;font-size:13px">${stars || "☆☆☆☆☆"}</div>
-      ${dist ? `<div style="color:#059669;font-size:12px;font-weight:600;margin-top:4px">📍 ${dist} away</div>` : ""}
-      ${toilet.is_free ? `<div style="color:#10b981;font-size:12px;margin-top:4px">🆓 Free to use</div>` : ""}
+      ${toilet.address
+      ? `<div style="color:#6b7280;font-size:12px;margin-bottom:6px">${toilet.address}</div>`
+      : ""}
+      <div style="display:flex;align-items:center;gap:5px;margin-bottom:4px">
+        <span style="color:#f59e0b;font-size:13px;letter-spacing:1px">${stars}</span>
+        <span style="color:#6b7280;font-size:11px">${ratingLabel}</span>
+      </div>
+      ${dist
+      ? `<div style="color:#059669;font-size:12px;font-weight:600;margin-top:4px">📍 ${dist} away</div>`
+      : ""}
+      ${toilet.is_free
+      ? `<div style="color:#10b981;font-size:12px;margin-top:4px">🆓 Free to use</div>`
+      : ""}
     </div>
   `;
 }
@@ -145,7 +168,7 @@ export default function UserHome() {
 
   const mapContainer = useRef(null);
   const map = useRef(null);
-  const markersRef = useRef({}); // id → mapboxgl.Marker
+  const markersRef = useRef({});      // id → mapboxgl.Marker
   const geocoderRef = useRef(null);
   const moveTimeoutRef = useRef(null);
 
@@ -187,25 +210,24 @@ export default function UserHome() {
 
   // ── Sync Mapbox markers with toilet data ─────────────────────────────────
   const updateMarkers = (mapInstance, toiletList) => {
-    // Remove old markers not in new list
+    // Remove stale markers
     const newIds = new Set(toiletList.map((t) => t.id));
     Object.entries(markersRef.current).forEach(([id, marker]) => {
-      if (!newIds.has(Number(id))) {
+      if (!newIds.has(id)) {           // UUIDs — keep as string
         marker.remove();
         delete markersRef.current[id];
       }
     });
 
-    // Add/update markers
     toiletList.forEach((toilet) => {
-      if (markersRef.current[toilet.id]) return; // already exists
+      if (markersRef.current[toilet.id]) return;
 
-      // Custom marker element
+      // ── Marker element using the Toilet SVG icon ──────────────────────
       const el = document.createElement("div");
       el.className = "toilet-marker";
       el.innerHTML = `
         <div class="marker-bubble" data-id="${toilet.id}">
-          <span class="marker-icon">🚻</span>
+          <span class="marker-icon">${TOILET_SVG}</span>
           ${toilet.is_free ? '<span class="marker-free">Free</span>' : ""}
         </div>
       `;
@@ -225,9 +247,9 @@ export default function UserHome() {
       el.addEventListener("click", () => {
         setActiveId(toilet.id);
         setSidebarOpen(true);
-        // Scroll card into view
-        const card = document.getElementById(`toilet-card-${toilet.id}`);
-        card?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        document
+          .getElementById(`toilet-card-${toilet.id}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       });
 
       markersRef.current[toilet.id] = marker;
@@ -237,10 +259,14 @@ export default function UserHome() {
   // ── Highlight active marker ───────────────────────────────────────────────
   useEffect(() => {
     document.querySelectorAll(".marker-bubble").forEach((el) => {
-      const id = Number(el.dataset.id);
-      el.style.background = id === activeId ? "#10b981" : "#fff";
-      el.style.color = id === activeId ? "#fff" : "#111";
-      el.style.transform = id === activeId ? "scale(1.15)" : "scale(1)";
+      const id = el.dataset.id;
+      const isActive = id === activeId;
+      el.style.background = isActive ? "#10b981" : "#fff";
+      el.style.color = isActive ? "#fff" : "#111";
+      el.style.transform = isActive ? "scale(1.15)" : "scale(1)";
+      // Tint the SVG icon stroke to match
+      const svg = el.querySelector("svg");
+      if (svg) svg.style.stroke = isActive ? "#fff" : "#10b981";
     });
   }, [activeId]);
 
@@ -259,7 +285,6 @@ export default function UserHome() {
       m.addControl(new mapboxgl.NavigationControl(), "top-right");
       m.addControl(new mapboxgl.ScaleControl(), "bottom-right");
 
-      // Geocoder (search box)
       const geocoder = new MapboxGeocoder({
         accessToken: mapboxgl.accessToken,
         mapboxgl,
@@ -270,7 +295,6 @@ export default function UserHome() {
       m.addControl(geocoder, "top-left");
       geocoderRef.current = geocoder;
 
-      // User location dot
       if (center !== ERNAKULAM) {
         new mapboxgl.Marker({ color: "#3b82f6" })
           .setLngLat([center.lng, center.lat])
@@ -284,7 +308,6 @@ export default function UserHome() {
         loadToiletsForBounds(m, center !== ERNAKULAM ? center : null);
       });
 
-      // Debounced move end → reload toilets
       m.on("moveend", () => {
         clearTimeout(moveTimeoutRef.current);
         moveTimeoutRef.current = setTimeout(() => {
@@ -293,7 +316,6 @@ export default function UserHome() {
       });
     };
 
-    // Request geolocation
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -337,7 +359,6 @@ export default function UserHome() {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* ── Global styles ─────────────────────────────────────────────── */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono&display=swap');
 
@@ -370,14 +391,23 @@ export default function UserHome() {
           box-shadow: 0 2px 8px rgba(0,0,0,0.18);
           display: flex;
           align-items: center;
-          gap: 4px;
+          gap: 5px;
           transition: all 0.15s ease;
           white-space: nowrap;
+          color: #111;
+        }
+        .marker-bubble svg {
+          stroke: #10b981;
+          flex-shrink: 0;
+          transition: stroke 0.15s ease;
         }
         .marker-bubble:hover {
           background: #10b981 !important;
           color: #fff !important;
           transform: scale(1.1) !important;
+        }
+        .marker-bubble:hover svg {
+          stroke: #fff !important;
         }
         .marker-free {
           font-size: 10px;
@@ -385,6 +415,10 @@ export default function UserHome() {
           color: #059669;
           border-radius: 99px;
           padding: 1px 5px;
+        }
+        .marker-bubble:hover .marker-free {
+          background: rgba(255,255,255,0.25);
+          color: #fff;
         }
 
         .sidebar-scroll::-webkit-scrollbar { width: 5px; }
@@ -396,12 +430,13 @@ export default function UserHome() {
           .mobile-sheet { display: flex !important; }
         }
         .mobile-sheet { display: none; }
+
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
 
-      {/* ── Root layout ───────────────────────────────────────────────── */}
       <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#f9fafb" }}>
 
-        {/* ── Top navbar ──────────────────────────────────────────────── */}
+        {/* ── Navbar ──────────────────────────────────────────────────────── */}
         <nav style={{
           height: 56,
           background: "#fff",
@@ -414,18 +449,34 @@ export default function UserHome() {
           flexShrink: 0,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 22 }}>🚻</span>
-            <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: "-0.5px", color: "#111" }}>
-              ToiletFinder
+            {/* Toilet icon in navbar via inline SVG */}
+            {/* <span style={{ display: "flex", alignItems: "center", color: "#10b981" }}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2.2"
+                strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 2h8a2 2 0 0 1 2 2v2a6 6 0 0 1-6 6 6 6 0 0 1-6-6V4a2 2 0 0 1 2-2Z" />
+                <path d="M4 8a6 6 0 0 0 5 5.92V16H7l-1 6h10l-1-6h-2v-2.08A6 6 0 0 0 18 8" />
+                <line x1="12" y1="2" x2="12" y2="4" />
+              </svg>
+            </span> */}
+            <span style={{
+              fontWeight: 800,
+              fontSize: 20,
+              letterSpacing: "-0.3px",
+              color: "#111",
+              fontFamily: "'Baloo Chettan 2', sans-serif",
+              lineHeight: 1,
+            }}>
+              peeസ്
             </span>
-            {locationStatus === "denied" && (
+            {/* {locationStatus === "denied" && (
               <span style={{
                 fontSize: 11, background: "#fef3c7", color: "#92400e",
                 padding: "2px 8px", borderRadius: 99, fontWeight: 600,
               }}>
                 📍 Using Ernakulam
               </span>
-            )}
+            )} */}
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -455,10 +506,10 @@ export default function UserHome() {
           </div>
         </nav>
 
-        {/* ── Main content: map + sidebar ──────────────────────────────── */}
+        {/* ── Main: sidebar + map ──────────────────────────────────────────── */}
         <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
 
-          {/* ── Left sidebar (desktop) ─────────────────────────────────── */}
+          {/* ── Desktop sidebar ────────────────────────────────────────────── */}
           <div
             className="desktop-sidebar"
             style={{
@@ -474,7 +525,6 @@ export default function UserHome() {
               zIndex: 10,
             }}
           >
-            {/* Sidebar header */}
             <div style={{
               padding: "16px 16px 10px",
               borderBottom: "1px solid #f3f4f6",
@@ -492,11 +542,7 @@ export default function UserHome() {
               </div>
             </div>
 
-            {/* Toilet list */}
-            <div
-              className="sidebar-scroll"
-              style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}
-            >
+            <div className="sidebar-scroll" style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
               {toilets.length === 0 && !loading && (
                 <div style={{ textAlign: "center", color: "#9ca3af", marginTop: 40, fontSize: 14 }}>
                   <div style={{ fontSize: 40 }}>🔍</div>
@@ -516,11 +562,10 @@ export default function UserHome() {
             </div>
           </div>
 
-          {/* ── Map ───────────────────────────────────────────────────── */}
+          {/* ── Map ────────────────────────────────────────────────────────── */}
           <div style={{ flex: 1, position: "relative" }}>
             <div ref={mapContainer} style={{ width: "100%", height: "100%" }} />
 
-            {/* Loading overlay */}
             {loading && (
               <div style={{
                 position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)",
@@ -531,11 +576,9 @@ export default function UserHome() {
               }}>
                 <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span>
                 Loading toilets…
-                <style>{`@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
               </div>
             )}
 
-            {/* Re-centre button (only when location granted) */}
             {locationStatus === "granted" && userLocation && (
               <button
                 onClick={() => {
@@ -558,7 +601,7 @@ export default function UserHome() {
             )}
           </div>
 
-          {/* ── Mobile bottom sheet ────────────────────────────────────── */}
+          {/* ── Mobile bottom sheet ─────────────────────────────────────────── */}
           <div
             className="mobile-sheet"
             style={{

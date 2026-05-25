@@ -48,6 +48,23 @@ class ToiletSerializer(serializers.ModelSerializer):
 
     def get_review_count(self, obj):
         return obj.reviews.count()
+    
+class ToiletMapPopupSerializer(serializers.ModelSerializer):
+    avg_overall = serializers.SerializerMethodField()
+ 
+    class Meta:
+        model = Toilet
+        fields = [
+            'id', 'name', 'address',
+            'latitude', 'longitude',
+            'is_free', 'avg_overall',
+        ]
+ 
+    def get_avg_overall(self, obj):
+        reviews = obj.reviews.all()
+        if not reviews:
+            return None
+        return round(sum(r.overall for r in reviews) / len(reviews), 1)
 
 
 class ToiletCreateSerializer(serializers.ModelSerializer):

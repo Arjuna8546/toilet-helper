@@ -15,7 +15,8 @@ from .serializers import (
     ToiletDetailSerializer,
     VerificationVoteSerializer,
     VoteCountSerializer,
-    ToiletPhotoSerializer
+    ToiletPhotoSerializer,
+    ToiletMapPopupSerializer
 )
 
 
@@ -135,30 +136,30 @@ class ToiletViewSet(viewsets.ModelViewSet):
                 {'detail': 'north, south, east, west are required numeric query params.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
+ 
         # Optional user location for distance calculation
         user_lat = request.query_params.get('lat')
         user_lng = request.query_params.get('lng')
-
+ 
         toilets = self.get_queryset().filter(
             latitude__gte=south,
             latitude__lte=north,
             longitude__gte=west,
             longitude__lte=east,
         )
-
+ 
         results = []
         for toilet in toilets:
-            data = ToiletSerializer(toilet, context={'request': request}).data
+            data = ToiletMapPopupSerializer(toilet, context={'request': request}).data
             if user_lat and user_lng:
                 dist = haversine_distance(float(user_lat), float(user_lng),
-                                        toilet.latitude, toilet.longitude)
+                                         toilet.latitude, toilet.longitude)
                 data['distance_metres'] = round(dist)
             results.append(data)
-
+ 
         if user_lat and user_lng:
             results.sort(key=lambda x: x.get('distance_metres', 0))
-
+ 
         return Response(results)
 
 
