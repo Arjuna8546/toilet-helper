@@ -16,12 +16,19 @@ export const deleteToilet = (id) => api.delete(`/toilets/${id}/`);
 export const fetchNearbyToilets = ({ lat, lng, radius = 5000 }) =>
   api.get("/toilets/nearby/", { params: { lat, lng, radius } });
 
+export const fetchToiletsInBounds = ({ north, south, east, west, lat, lng }) =>
+  api.get("/toilets/in_bounds/", { params: { north, south, east, west, lat, lng } });
+
+
 // ─── Photos ─────────────────────────────────────────────────────────────────
 
 export const uploadToiletPhoto = (toiletId, formData) =>
   api.post(`/toilets/${toiletId}/photos/`, formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
+
+export const updateToiletPhoto = (toiletId, photoId, data) =>
+  api.patch(`/toilets/${toiletId}/photos/${photoId}/`, data);
 
 export const deleteToiletPhoto = (toiletId, photoId) =>
   api.delete(`/toilets/${toiletId}/photos/${photoId}/`);

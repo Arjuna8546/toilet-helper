@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Toilet, ToiletPhoto, VerificationVote
+from reviews.models import Review
 
 
 class ToiletPhotoSerializer(serializers.ModelSerializer):
@@ -54,7 +55,7 @@ class ToiletCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Toilet
         fields = [
-            'name', 'category', 'status',
+            'id','name', 'category', 'status',
             'latitude', 'longitude', 'address', 'city', 'district',
             'landmark', 'google_maps_url', 'osm_node_id',
             'is_free', 'price_inr', 'operating_hours', 'phone_number',
@@ -69,8 +70,11 @@ class ToiletDetailSerializer(ToiletSerializer):
     """Full detail including nested reviews — used for single toilet endpoint."""
     reviews = serializers.SerializerMethodField()
 
+    class Meta(ToiletSerializer.Meta):
+        fields = ToiletSerializer.Meta.fields + ['reviews']
+
     def get_reviews(self, obj):
-        from backend.reviews.serializers import ReviewSerializer
+        from reviews.serializers import ReviewSerializer
         qs = obj.reviews.all().order_by('-visited_at')
         return ReviewSerializer(qs, many=True).data
 

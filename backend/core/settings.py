@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import cloudinary
 
 load_dotenv()
 
@@ -113,6 +114,19 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
 }
 
+CLOUDINARY = {
+    'cloud_name':  os.getenv('CLOUDINARY_CLOUD_NAME'),
+    'api_key': os.getenv('CLOUDINARY_API_KEY'),
+    'api_secret': os.getenv('CLOUDINARY_API_SECRET')
+}
+
+cloudinary.config(
+    cloud_name=CLOUDINARY['cloud_name'],
+    api_key=CLOUDINARY['api_key'],
+    api_secret=CLOUDINARY['api_secret']
+)
+
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 
 # Password validation

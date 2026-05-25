@@ -63,7 +63,7 @@ export default function AdminDashboard() {
               Here's what's happening with ToiletTrail today.
             </p>
           </div>
-          <button
+          {/* <button
             onClick={() => navigate("/admin-dashboard/add-toilet")}
             className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity shrink-0 border-none cursor-pointer"
           >
@@ -71,48 +71,10 @@ export default function AdminDashboard() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
             Add Toilet
-          </button>
+          </button> */}
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-10">
-          {STATS.map((stat) => (
-            <div
-              key={stat.label}
-              className={`bg-[#0d1018] border border-[#181e2e] rounded-2xl p-6 ring-1 ${stat.ring}`}
-            >
-              <div className={`w-10 h-10 rounded-xl ${stat.bg} flex items-center justify-center text-xl mb-4`}>
-                {stat.icon}
-              </div>
-              <div className={`text-3xl font-bold tracking-tight mb-1 ${stat.text}`}>{stat.value}</div>
-              <div className="text-xs text-slate-600 font-semibold uppercase tracking-wider">{stat.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Quick actions */}
-        <div>
-          <div className="text-[10px] font-bold text-slate-700 tracking-[1.2px] uppercase mb-4">
-            Quick Actions
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            {ACTIONS.map((action) => (
-              <div
-                key={action.title}
-                onClick={() => navigate(action.to)}
-                className="bg-[#0d1018] border border-[#181e2e] rounded-2xl p-6 cursor-pointer hover:border-[#252d42] hover:-translate-y-0.5 transition-all duration-150 group"
-              >
-                <div className={`w-11 h-11 rounded-xl ${action.iconBg} flex items-center justify-center text-2xl mb-5`}>
-                  {action.icon}
-                </div>
-                <div className="text-[15px] font-bold text-slate-300 mb-1 group-hover:text-slate-100 transition-colors">
-                  {action.title}
-                </div>
-                <div className="text-[13px] text-slate-600 leading-relaxed">{action.desc}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        
       </main>
     </div>
   );

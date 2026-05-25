@@ -15,6 +15,7 @@ from .serializers import (
     ToiletDetailSerializer,
     VerificationVoteSerializer,
     VoteCountSerializer,
+    ToiletPhotoSerializer
 )
 
 
@@ -116,6 +117,49 @@ class ToiletViewSet(viewsets.ModelViewSet):
 
         results.sort(key=lambda x: x['distance_metres'])
         return Response(results)
+    
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def in_bounds(self, request):
+        """
+        GET /api/toilets/in_bounds/?north=&south=&east=&west=
+        Returns all published toilets within the map viewport bounding box.
+        Optionally also returns distance from a user point if lat/lng provided.
+        """
+        try:
+            north = float(request.query_params['north'])
+            south = float(request.query_params['south'])
+            east  = float(request.query_params['east'])
+            west  = float(request.query_params['west'])
+        except (KeyError, ValueError):
+            return Response(
+                {'detail': 'north, south, east, west are required numeric query params.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Optional user location for distance calculation
+        user_lat = request.query_params.get('lat')
+        user_lng = request.query_params.get('lng')
+
+        toilets = self.get_queryset().filter(
+            latitude__gte=south,
+            latitude__lte=north,
+            longitude__gte=west,
+            longitude__lte=east,
+        )
+
+        results = []
+        for toilet in toilets:
+            data = ToiletSerializer(toilet, context={'request': request}).data
+            if user_lat and user_lng:
+                dist = haversine_distance(float(user_lat), float(user_lng),
+                                        toilet.latitude, toilet.longitude)
+                data['distance_metres'] = round(dist)
+            results.append(data)
+
+        if user_lat and user_lng:
+            results.sort(key=lambda x: x.get('distance_metres', 0))
+
+        return Response(results)
 
 
 # ------------------------------------------------------------------ #
@@ -123,7 +167,7 @@ class ToiletViewSet(viewsets.ModelViewSet):
 # ------------------------------------------------------------------ #
 class PhotoUploadView(viewsets.ViewSet):
     """
-    POST /api/toilets/{toilet_pk}/photos/   — upload photo to Cloudinary (admin)
+    POST /api/toilets/{toilet_pk}/photos/   — upload photos to Cloudinary (admin)
     DELETE /api/toilets/{toilet_pk}/photos/{pk}/ — delete photo (admin)
     """
     parser_classes = [MultiPartParser, FormParser]
@@ -131,31 +175,48 @@ class PhotoUploadView(viewsets.ViewSet):
 
     def create(self, request, toilet_pk=None):
         toilet = Toilet.objects.get(pk=toilet_pk)
-        file = request.FILES.get('photo')
-        if not file:
-            return Response({'detail': 'No photo file provided.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        result = cloudinary.uploader.upload(
-            file,
-            folder='toilettrail/photos',
-            transformation=[
-                {'width': 1080, 'height': 1080, 'crop': 'limit', 'quality': 'auto:good'},
-            ],
+        files = request.FILES.getlist('photos')
+
+        if not files:
+            return Response(
+                {'detail': 'No photo files provided.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        uploaded_photos = []
+
+        for file in files:
+            result = cloudinary.uploader.upload(
+                file,
+                folder='toilettrail/photos',
+                transformation=[
+                    {
+                        'width': 1080,
+                        'height': 1080,
+                        'crop': 'limit',
+                        'quality': 'auto:good',
+                    },
+                ],
+            )
+
+            is_cover = not toilet.photos.filter(is_cover=True).exists()
+
+            photo = ToiletPhoto.objects.create(
+                toilet=toilet,
+                uploaded_by=request.user,
+                cloudinary_public_id=result['public_id'],
+                image_url=result['secure_url'],
+                caption=request.data.get('caption', ''),
+                is_cover=is_cover,
+            )
+
+            uploaded_photos.append(photo)
+
+        return Response(
+            ToiletPhotoSerializer(uploaded_photos, many=True).data,
+            status=status.HTTP_201_CREATED
         )
-
-        is_cover = not toilet.photos.filter(is_cover=True).exists()
-
-        photo = ToiletPhoto.objects.create(
-            toilet=toilet,
-            uploaded_by=request.user,
-            cloudinary_public_id=result['public_id'],
-            image_url=result['secure_url'],
-            caption=request.data.get('caption', ''),
-            is_cover=is_cover,
-        )
-
-        from .serializers import ToiletPhotoSerializer
-        return Response(ToiletPhotoSerializer(photo).data, status=status.HTTP_201_CREATED)
 
     def destroy(self, request, toilet_pk=None, pk=None):
         photo = ToiletPhoto.objects.get(pk=pk, toilet_id=toilet_pk)

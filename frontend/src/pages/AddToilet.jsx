@@ -33,17 +33,11 @@ const CATEGORY_OPTIONS = [
 ];
 
 const WATER_OPTIONS = [
-    { value: "ALWAYS", label: "Always" },
-    { value: "SOMETIMES", label: "Sometimes" },
-    { value: "NEVER", label: "Never" },
-    { value: "UNKNOWN", label: "Unknown" },
+    { value: "AVAILABLE",   label: "Available" },
+    { value: "SOMETIMES",   label: "Sometimes Available" },
+    { value: "UNAVAILABLE", label: "Not Available" },
 ];
 
-const CROWD_OPTIONS = [
-    { value: "LOW", label: "Low" },
-    { value: "MEDIUM", label: "Medium" },
-    { value: "HIGH", label: "High" },
-];
 
 // ─────────────────────────────────────────────────────────
 // Initial State
@@ -59,7 +53,6 @@ const TOILET_INIT = {
 
     address: "",
     city: "",
-
     district: "",
     landmark: "",
 
@@ -91,8 +84,8 @@ const REVIEW_INIT = {
     safety: 3,
     overall: 3,
 
-    water_availability: "UNKNOWN",
-    crowd_level: "LOW",
+    water_availability: "AVAILABLE",
+    crowd_level: 3,           // 1–5 integer: 1 = Empty, 5 = Always crowded
 
     has_soap: false,
     has_mirror: false,
@@ -251,7 +244,8 @@ export default function AddToilet() {
 
     const [addReview, setAddReview] = useState(true);
 
-    const [photos, setPhotos] = useState([]);
+    // Each entry: { localId, file, previewUrl }
+    const [pendingPhotos, setPendingPhotos] = useState([]);
 
     const [photoUploading, setPhotoUploading] = useState(false);
 
@@ -291,7 +285,6 @@ export default function AddToilet() {
             setLoading(true);
             setError(null);
 
-            // Validation
             if (!toilet.name.trim()) {
                 setError("Toilet name is required");
                 return;
@@ -344,7 +337,6 @@ export default function AddToilet() {
             setStep(2);
         } catch (err) {
             console.log(err);
-
             console.log(err.response?.data);
 
             setError(
@@ -355,63 +347,63 @@ export default function AddToilet() {
             setLoading(false);
         }
     };
+
     // ─────────────────────────────────────────────────────
-    // Photos
+    // Photos — local preview only, upload on Continue
     // ─────────────────────────────────────────────────────
 
-    const handlePhotoFiles = async (files) => {
+    // Add files to local preview list (no upload yet)
+    const handlePhotoFiles = (files) => {
         if (!files?.length) return;
 
-        setPhotoUploading(true);
+        const newEntries = Array.from(files).map((file) => ({
+            localId: `local-${Date.now()}-${Math.random()}`,
+            file,
+            previewUrl: URL.createObjectURL(file),
+        }));
 
-        for (const file of Array.from(files)) {
-            const tempId = `temp-${Date.now()}`;
-
-            const preview = URL.createObjectURL(file);
-
-            setPhotos((p) => [
-                ...p,
-                {
-                    id: tempId,
-                    image_url: preview,
-                    uploading: true,
-                },
-            ]);
-
-            try {
-                const formData = new FormData();
-
-                formData.append("photo", file);
-
-                const res = await uploadToiletPhoto(toiletId, formData);
-
-                setPhotos((p) =>
-                    p.map((photo) =>
-                        photo.id === tempId
-                            ? {
-                                ...res.data,
-                                uploading: false,
-                            }
-                            : photo
-                    )
-                );
-            } catch (err) {
-                console.log(err);
-
-                setPhotos((p) => p.filter((x) => x.id !== tempId));
-            }
-        }
-
-        setPhotoUploading(false);
+        setPendingPhotos((p) => [...p, ...newEntries]);
     };
 
-    const handleDeletePhoto = async (photoId) => {
-        try {
-            await deleteToiletPhoto(toiletId, photoId);
+    // Remove from local preview list (revoke object URL to free memory)
+    const handleRemovePending = (localId) => {
+        setPendingPhotos((p) => {
+            const entry = p.find((x) => x.localId === localId);
+            if (entry) URL.revokeObjectURL(entry.previewUrl);
+            return p.filter((x) => x.localId !== localId);
+        });
+    };
 
-            setPhotos((p) => p.filter((x) => x.id !== photoId));
+    // Upload all pending photos in a single request then advance to step 3
+    const handleUploadAndContinue = async () => {
+        if (pendingPhotos.length === 0) {
+            setStep(3);
+            return;
+        }
+
+        setPhotoUploading(true);
+        setError(null);
+
+        try {
+            const formData = new FormData();
+
+            for (const entry of pendingPhotos) {
+                // Backend expects the key 'photos' (plural) for multiple files
+                formData.append("photos", entry.file);
+            }
+
+            await uploadToiletPhoto(toiletId, formData);
+
+            // Revoke all preview URLs to free memory
+            pendingPhotos.forEach((entry) => URL.revokeObjectURL(entry.previewUrl));
+
+            setPendingPhotos([]);
+            setStep(3);
         } catch (err) {
             console.log(err);
+            setError("Photo upload failed. Please try again.");
+        } finally {
+            setPhotoUploading(false);
         }
     };
 
@@ -520,23 +512,28 @@ export default function AddToilet() {
                     </div>
                 )}
 
-                {/* STEP 1 */}
+                {/* ── STEP 1 ── */}
 
                 {step === 1 && (
                     <div className="space-y-6">
-                        {/* Basic */}
-
                         <div className="bg-[#0d1018] border border-[#181e2e] rounded-2xl p-6">
                             <h2 className="text-xl font-bold text-white mb-6">
                                 Toilet Details
                             </h2>
 
+                            {/* ── Location ── */}
+
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">
+                                Location
+                            </p>
+
                             <div className="grid grid-cols-2 gap-5">
-                                <Field label="Toilet Name">
+                                <Field label="Toilet Name *">
                                     <Input
                                         name="name"
                                         value={toilet.name}
                                         onChange={handleToilet}
+                                        placeholder="e.g. Central Bus Stand Toilet"
                                     />
                                 </Field>
 
@@ -547,55 +544,66 @@ export default function AddToilet() {
                                         onChange={handleToilet}
                                     >
                                         {CATEGORY_OPTIONS.map((o) => (
-                                            <option
-                                                key={o.value}
-                                                value={o.value}
-                                            >
+                                            <option key={o.value} value={o.value}>
                                                 {o.label}
                                             </option>
                                         ))}
                                     </Select>
                                 </Field>
 
-                                <Field label="Address">
+                                <Field label="Address *">
                                     <Input
                                         name="address"
                                         value={toilet.address}
                                         onChange={handleToilet}
+                                        placeholder="Street / building"
                                     />
                                 </Field>
 
-                                <Field label="City">
+                                <Field label="City *">
                                     <Input
                                         name="city"
                                         value={toilet.city}
                                         onChange={handleToilet}
+                                        placeholder="e.g. Kochi"
                                     />
-                                    <Field label="District *">
-                                        <Input
-                                            name="district"
-                                            value={toilet.district}
-                                            onChange={handleToilet}
-                                            placeholder="Ernakulam"
-                                        />
-                                    </Field>
                                 </Field>
 
-                                <Field label="Latitude">
+                                <Field label="District *">
+                                    <Input
+                                        name="district"
+                                        value={toilet.district}
+                                        onChange={handleToilet}
+                                        placeholder="e.g. Ernakulam"
+                                    />
+                                </Field>
+
+                                <Field label="Landmark">
+                                    <Input
+                                        name="landmark"
+                                        value={toilet.landmark}
+                                        onChange={handleToilet}
+                                        placeholder="Nearby landmark"
+                                    />
+                                </Field>
+
+                                <Field label="Latitude *">
                                     <Input
                                         name="latitude"
                                         type="number"
                                         value={toilet.latitude}
                                         onChange={handleToilet}
+                                        placeholder="9.9312"
                                     />
                                 </Field>
 
-                                <Field label="Longitude">
+                                <Field label="Longitude *">
                                     <Input
                                         name="longitude"
                                         type="number"
                                         value={toilet.longitude}
                                         onChange={handleToilet}
+                                        placeholder="76.2673"
                                     />
                                 </Field>
                             </div>
@@ -622,17 +630,116 @@ export default function AddToilet() {
                                 )}
                             </div>
 
-                            {/* Amenities */}
+                            {/* ── Contact & Links ── */}
 
-                            <div className="grid grid-cols-2 gap-4 mt-8">
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mt-10 mb-4">
+                                Contact &amp; Links
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-5">
+                                <Field label="Phone Number">
+                                    <Input
+                                        name="phone_number"
+                                        value={toilet.phone_number}
+                                        onChange={handleToilet}
+                                        placeholder="+91 XXXXX XXXXX"
+                                    />
+                                </Field>
+
+                                <Field label="Google Maps URL">
+                                    <Input
+                                        name="google_maps_url"
+                                        value={toilet.google_maps_url}
+                                        onChange={handleToilet}
+                                        placeholder="https://maps.google.com/..."
+                                    />
+                                </Field>
+
+                                <Field label="OSM Node ID">
+                                    <Input
+                                        name="osm_node_id"
+                                        value={toilet.osm_node_id}
+                                        onChange={handleToilet}
+                                        placeholder="OpenStreetMap node ID"
+                                    />
+                                </Field>
+                            </div>
+
+                            {/* ── Pricing ── */}
+
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mt-10 mb-4">
+                                Pricing
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-5 items-end">
+                                <div className="flex items-center gap-4 pt-2">
+                                    <Toggle
+                                        label="Free to Use"
+                                        checked={toilet.is_free}
+                                        onChange={() =>
+                                            setToilet((p) => ({
+                                                ...p,
+                                                is_free: !p.is_free,
+                                                price_inr: !p.is_free ? "" : p.price_inr,
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                {!toilet.is_free && (
+                                    <Field label="Price (₹)">
+                                        <Input
+                                            name="price_inr"
+                                            type="number"
+                                            min="0"
+                                            value={toilet.price_inr}
+                                            onChange={handleToilet}
+                                            placeholder="e.g. 5"
+                                        />
+                                    </Field>
+                                )}
+                            </div>
+
+                            {/* ── Operating Hours ── */}
+
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mt-10 mb-4">
+                                Operating Hours
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-5">
+                                <Field label="From">
+                                    <Input
+                                        name="operating_hours_from"
+                                        type="time"
+                                        value={toilet.operating_hours_from}
+                                        onChange={handleToilet}
+                                    />
+                                </Field>
+
+                                <Field label="To">
+                                    <Input
+                                        name="operating_hours_to"
+                                        type="time"
+                                        value={toilet.operating_hours_to}
+                                        onChange={handleToilet}
+                                    />
+                                </Field>
+                            </div>
+
+                            {/* ── Amenities ── */}
+
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mt-10 mb-4">
+                                Amenities
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-4">
                                 <Toggle
                                     label="Wheelchair Accessible"
                                     checked={toilet.is_wheelchair_accessible}
                                     onChange={() =>
                                         setToilet((p) => ({
                                             ...p,
-                                            is_wheelchair_accessible:
-                                                !p.is_wheelchair_accessible,
+                                            is_wheelchair_accessible: !p.is_wheelchair_accessible,
                                         }))
                                     }
                                 />
@@ -643,8 +750,7 @@ export default function AddToilet() {
                                     onChange={() =>
                                         setToilet((p) => ({
                                             ...p,
-                                            is_women_friendly:
-                                                !p.is_women_friendly,
+                                            is_women_friendly: !p.is_women_friendly,
                                         }))
                                     }
                                 />
@@ -655,8 +761,7 @@ export default function AddToilet() {
                                     onChange={() =>
                                         setToilet((p) => ({
                                             ...p,
-                                            has_western_toilet:
-                                                !p.has_western_toilet,
+                                            has_western_toilet: !p.has_western_toilet,
                                         }))
                                     }
                                 />
@@ -667,8 +772,29 @@ export default function AddToilet() {
                                     onChange={() =>
                                         setToilet((p) => ({
                                             ...p,
-                                            has_indian_toilet:
-                                                !p.has_indian_toilet,
+                                            has_indian_toilet: !p.has_indian_toilet,
+                                        }))
+                                    }
+                                />
+
+                                <Toggle
+                                    label="Baby Changing"
+                                    checked={toilet.has_baby_changing}
+                                    onChange={() =>
+                                        setToilet((p) => ({
+                                            ...p,
+                                            has_baby_changing: !p.has_baby_changing,
+                                        }))
+                                    }
+                                />
+
+                                <Toggle
+                                    label="Parking Available"
+                                    checked={toilet.has_parking}
+                                    onChange={() =>
+                                        setToilet((p) => ({
+                                            ...p,
+                                            has_parking: !p.has_parking,
                                         }))
                                     }
                                 />
@@ -691,7 +817,7 @@ export default function AddToilet() {
                     </div>
                 )}
 
-                {/* STEP 2 */}
+                {/* ── STEP 2 ── */}
 
                 {step === 2 && (
                     <div className="bg-[#0d1018] border border-[#181e2e] rounded-2xl p-6">
@@ -700,7 +826,7 @@ export default function AddToilet() {
                         </h2>
 
                         <p className="text-slate-500 mb-6">
-                            Upload photos for this toilet
+                            Add or remove photos below. They will be uploaded when you press Continue.
                         </p>
 
                         {/* Dropzone */}
@@ -712,7 +838,7 @@ export default function AddToilet() {
                                 handlePhotoFiles(e.dataTransfer.files);
                             }}
                             onDragOver={(e) => e.preventDefault()}
-                            className="border-2 border-dashed border-[#334155] rounded-2xl p-12 flex flex-col items-center justify-center cursor-pointer"
+                            className="border-2 border-dashed border-[#334155] rounded-2xl p-12 flex flex-col items-center justify-center cursor-pointer hover:border-blue-600 transition-colors"
                         >
                             <input
                                 ref={fileInputRef}
@@ -720,15 +846,17 @@ export default function AddToilet() {
                                 multiple
                                 accept="image/*"
                                 hidden
-                                onChange={(e) =>
-                                    handlePhotoFiles(e.target.files)
-                                }
+                                onChange={(e) => {
+                                    handlePhotoFiles(e.target.files);
+                                    // Reset so the same file can be re-added if removed
+                                    e.target.value = "";
+                                }}
                             />
 
+                            <div className="text-4xl mb-3">📷</div>
+
                             <div className="text-slate-300 text-lg">
-                                {photoUploading
-                                    ? "Uploading..."
-                                    : "Drop photos here"}
+                                Drop photos here
                             </div>
 
                             <div className="text-slate-600 text-sm mt-2">
@@ -736,33 +864,47 @@ export default function AddToilet() {
                             </div>
                         </div>
 
-                        {/* Photos */}
+                        {/* Preview grid */}
 
-                        {photos.length > 0 && (
-                            <div className="grid grid-cols-4 gap-4 mt-8">
-                                {photos.map((photo) => (
-                                    <div
-                                        key={photo.id}
-                                        className="relative rounded-xl overflow-hidden border border-[#1e293b]"
+                        {pendingPhotos.length > 0 && (
+                            <>
+                                <div className="flex items-center justify-between mt-8 mb-4">
+                                    <span className="text-sm text-slate-400">
+                                        {pendingPhotos.length} photo{pendingPhotos.length !== 1 ? "s" : ""} selected
+                                    </span>
+
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="text-sm text-blue-400 hover:text-blue-300"
                                     >
-                                        <img
-                                            src={photo.image_url}
-                                            className="w-full aspect-square object-cover"
-                                        />
+                                        + Add more
+                                    </button>
+                                </div>
 
-                                        {!photo.uploading && (
+                                <div className="grid grid-cols-4 gap-4">
+                                    {pendingPhotos.map((photo) => (
+                                        <div
+                                            key={photo.localId}
+                                            className="relative rounded-xl overflow-hidden border border-[#1e293b] group"
+                                        >
+                                            <img
+                                                src={photo.previewUrl}
+                                                className="w-full aspect-square object-cover"
+                                                alt="preview"
+                                            />
+
+                                            {/* Remove button */}
                                             <button
-                                                onClick={() =>
-                                                    handleDeletePhoto(photo.id)
-                                                }
-                                                className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-red-500 text-white"
+                                                onClick={() => handleRemovePending(photo.localId)}
+                                                className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-red-500 text-white text-lg leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title="Remove"
                                             >
                                                 ×
                                             </button>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
                         )}
 
                         {/* Actions */}
@@ -770,22 +912,28 @@ export default function AddToilet() {
                         <div className="flex justify-between mt-10">
                             <button
                                 onClick={() => setStep(1)}
-                                className="px-5 py-3 bg-[#1a1f2e] rounded-xl text-slate-300"
+                                disabled={photoUploading}
+                                className="px-5 py-3 bg-[#1a1f2e] rounded-xl text-slate-300 disabled:opacity-50"
                             >
                                 Back
                             </button>
 
                             <button
-                                onClick={() => setStep(3)}
-                                className="px-6 py-3 bg-blue-600 rounded-xl text-white font-semibold"
+                                onClick={handleUploadAndContinue}
+                                disabled={photoUploading}
+                                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl text-white font-semibold disabled:opacity-50"
                             >
-                                Continue
+                                {photoUploading
+                                    ? `Uploading ${pendingPhotos.length} photo${pendingPhotos.length !== 1 ? "s" : ""}…`
+                                    : pendingPhotos.length === 0
+                                        ? "Skip & Continue"
+                                        : `Upload & Continue`}
                             </button>
                         </div>
                     </div>
                 )}
 
-                {/* STEP 3 */}
+                {/* ── STEP 3 ── */}
 
                 {step === 3 && (
                     <div className="bg-[#0d1018] border border-[#181e2e] rounded-2xl p-6">
@@ -809,122 +957,154 @@ export default function AddToilet() {
 
                         {addReview && (
                             <>
-                                <div className="grid grid-cols-2 gap-8">
+                                {/* ── Ratings ── */}
+
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                                    Ratings
+                                </p>
+
+                                <div className="grid grid-cols-2 gap-x-8">
                                     <div>
                                         <RatingInput
                                             label="Cleanliness"
                                             value={review.cleanliness}
-                                            onChange={(v) =>
-                                                setReview((p) => ({
-                                                    ...p,
-                                                    cleanliness: v,
-                                                }))
-                                            }
+                                            onChange={(v) => setReview((p) => ({ ...p, cleanliness: v }))}
                                         />
-
                                         <RatingInput
                                             label="Smell"
                                             value={review.smell}
-                                            onChange={(v) =>
-                                                setReview((p) => ({
-                                                    ...p,
-                                                    smell: v,
-                                                }))
-                                            }
+                                            onChange={(v) => setReview((p) => ({ ...p, smell: v }))}
                                         />
-
                                         <RatingInput
                                             label="Privacy"
                                             value={review.privacy}
-                                            onChange={(v) =>
-                                                setReview((p) => ({
-                                                    ...p,
-                                                    privacy: v,
-                                                }))
-                                            }
+                                            onChange={(v) => setReview((p) => ({ ...p, privacy: v }))}
+                                        />
+                                        <RatingInput
+                                            label="Lighting"
+                                            value={review.lighting}
+                                            onChange={(v) => setReview((p) => ({ ...p, lighting: v }))}
                                         />
                                     </div>
 
                                     <div>
                                         <RatingInput
-                                            label="Lighting"
-                                            value={review.lighting}
-                                            onChange={(v) =>
-                                                setReview((p) => ({
-                                                    ...p,
-                                                    lighting: v,
-                                                }))
-                                            }
-                                        />
-
-                                        <RatingInput
                                             label="Maintenance"
                                             value={review.maintenance}
-                                            onChange={(v) =>
-                                                setReview((p) => ({
-                                                    ...p,
-                                                    maintenance: v,
-                                                }))
-                                            }
+                                            onChange={(v) => setReview((p) => ({ ...p, maintenance: v }))}
                                         />
-
+                                        <RatingInput
+                                            label="Safety"
+                                            value={review.safety}
+                                            onChange={(v) => setReview((p) => ({ ...p, safety: v }))}
+                                        />
                                         <RatingInput
                                             label="Overall"
                                             value={review.overall}
-                                            onChange={(v) =>
-                                                setReview((p) => ({
-                                                    ...p,
-                                                    overall: v,
-                                                }))
-                                            }
+                                            onChange={(v) => setReview((p) => ({ ...p, overall: v }))}
+                                        />
+                                        {/* Crowd Level: 1 = Empty → 5 = Always crowded */}
+                                        <RatingInput
+                                            label="Crowd Level (1 = Empty, 5 = Always crowded)"
+                                            value={review.crowd_level}
+                                            onChange={(v) => setReview((p) => ({ ...p, crowd_level: v }))}
                                         />
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-5 mt-8">
+                                {/* ── Water & Timing ── */}
+
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mt-8 mb-4">
+                                    Water &amp; Timing
+                                </p>
+
+                                <div className="grid grid-cols-2 gap-5">
                                     <Field label="Water Availability">
                                         <Select
                                             value={review.water_availability}
                                             onChange={(e) =>
-                                                setReview((p) => ({
-                                                    ...p,
-                                                    water_availability:
-                                                        e.target.value,
-                                                }))
+                                                setReview((p) => ({ ...p, water_availability: e.target.value }))
                                             }
                                         >
                                             {WATER_OPTIONS.map((o) => (
-                                                <option
-                                                    key={o.value}
-                                                    value={o.value}
-                                                >
+                                                <option key={o.value} value={o.value}>
                                                     {o.label}
                                                 </option>
                                             ))}
                                         </Select>
                                     </Field>
 
-                                    <Field label="Crowd Level">
-                                        <Select
-                                            value={review.crowd_level}
+                                    <Field label="Best Time to Visit">
+                                        <Input
+                                            name="best_time_to_visit"
+                                            value={review.best_time_to_visit}
                                             onChange={(e) =>
-                                                setReview((p) => ({
-                                                    ...p,
-                                                    crowd_level: e.target.value,
-                                                }))
+                                                setReview((p) => ({ ...p, best_time_to_visit: e.target.value }))
                                             }
-                                        >
-                                            {CROWD_OPTIONS.map((o) => (
-                                                <option
-                                                    key={o.value}
-                                                    value={o.value}
-                                                >
-                                                    {o.label}
-                                                </option>
-                                            ))}
-                                        </Select>
+                                            placeholder="e.g. Early morning"
+                                        />
+                                    </Field>
+
+                                    <Field label="Visited At">
+                                        <Input
+                                            type="datetime-local"
+                                            value={review.visited_at}
+                                            onChange={(e) =>
+                                                setReview((p) => ({ ...p, visited_at: e.target.value }))
+                                            }
+                                        />
                                     </Field>
                                 </div>
+
+                                {/* ── Facilities ── */}
+
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mt-8 mb-4">
+                                    Facilities
+                                </p>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <Toggle
+                                        label="Soap Available"
+                                        checked={review.has_soap}
+                                        onChange={() => setReview((p) => ({ ...p, has_soap: !p.has_soap }))}
+                                    />
+                                    <Toggle
+                                        label="Mirror Available"
+                                        checked={review.has_mirror}
+                                        onChange={() => setReview((p) => ({ ...p, has_mirror: !p.has_mirror }))}
+                                    />
+                                    <Toggle
+                                        label="Dustbin Available"
+                                        checked={review.has_dustbin}
+                                        onChange={() => setReview((p) => ({ ...p, has_dustbin: !p.has_dustbin }))}
+                                    />
+                                    <Toggle
+                                        label="Hand Dryer"
+                                        checked={review.has_hand_dryer}
+                                        onChange={() => setReview((p) => ({ ...p, has_hand_dryer: !p.has_hand_dryer }))}
+                                    />
+                                    <Toggle
+                                        label="Sanitary Vending Machine"
+                                        checked={review.has_sanitary_vending}
+                                        onChange={() => setReview((p) => ({ ...p, has_sanitary_vending: !p.has_sanitary_vending }))}
+                                    />
+                                </div>
+
+                                {/* ── Admin Note ── */}
+
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mt-8 mb-4">
+                                    Admin Note
+                                </p>
+
+                                <textarea
+                                    value={review.admin_note}
+                                    onChange={(e) =>
+                                        setReview((p) => ({ ...p, admin_note: e.target.value }))
+                                    }
+                                    placeholder="Internal note — not shown publicly or fed to AI"
+                                    rows={3}
+                                    className="bg-[#07090f] border border-[#181e2e] rounded-xl text-slate-300 px-3 py-2.5 text-sm outline-none w-full focus:border-blue-600 transition-colors resize-none"
+                                />
                             </>
                         )}
 
@@ -949,7 +1129,7 @@ export default function AddToilet() {
                     </div>
                 )}
 
-                {/* STEP 4 */}
+                {/* ── STEP 4 ── */}
 
                 {step === 4 && (
                     <div className="bg-[#0d1018] border border-[#181e2e] rounded-2xl p-16 text-center">
@@ -962,8 +1142,7 @@ export default function AddToilet() {
                         </h2>
 
                         <p className="text-slate-500 mt-4">
-                            Toilet, photos and initial review saved
-                            successfully.
+                            Toilet, photos and initial review saved successfully.
                         </p>
 
                         <div className="flex items-center justify-center gap-4 mt-10">

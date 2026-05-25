@@ -5,6 +5,7 @@ import { useSelector } from "react-redux";
 import Login from "./pages/Login";
 import AdminDashboard from "./pages/AdminDashboard";
 import AddToilet from "./pages/AddToilet";
+import AllToilets from "./pages/AllToilets";
 import UserHome from "./pages/UserHome";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -43,6 +44,15 @@ function App() {
           element={
             <ProtectedRoute adminOnly={true}>
               <AddToilet />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin-dashboard/toilets"
+          element={
+            <ProtectedRoute adminOnly={true}>
+              <AllToilets />
             </ProtectedRoute>
           }
         />
