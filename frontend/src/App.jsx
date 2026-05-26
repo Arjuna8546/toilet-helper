@@ -8,6 +8,7 @@ import AddToilet from "./pages/AddToilet";
 import AllToilets from "./pages/AllToilets";
 import UserHome from "./pages/UserHome";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ToiletView from "./pages/Toiletview";
 
 function App() {
   const { token, user } = useSelector((state) => state.auth);
@@ -62,6 +63,14 @@ function App() {
           element={
             <ProtectedRoute>
               <UserHome />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/toilet/:id"
+          element={
+            <ProtectedRoute>
+              <ToiletView />
             </ProtectedRoute>
           }
         />
