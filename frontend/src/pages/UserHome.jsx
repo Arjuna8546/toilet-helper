@@ -346,7 +346,7 @@ export default function UserHome() {
       m.addControl(new mapboxgl.ScaleControl(), "bottom-right");
 
       if (center !== ERNAKULAM) {
-        new mapboxgl.Marker({ color: "#3b82f6" })
+        new mapboxgl.Marker({ color: "#111827" })
           .setLngLat([center.lng, center.lat])
           .setPopup(new mapboxgl.Popup().setHTML("<b>You are here</b>"))
           .addTo(m);

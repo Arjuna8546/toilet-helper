@@ -1,0 +1,14 @@
+REEL_W          = 1080
+REEL_H          = 1920
+REEL_FPS        = 30
+PHOTO_DUR       = 5.0
+TRANSITION_DUR  = 0.5
+ZOOM_START      = 1.0
+ZOOM_END        = 1.08
+FONT            = "Arial-Bold"
+CAPTION_FONT_SZ = 40
+CAPTION_COLOR   = "white"
+BAR_COLOR       = (0, 0, 0)
+BAR_OPACITY     = 0.55
+BAR_HEIGHT      = 220
+TTS_VOICE       = "en-US-JennyNeural"

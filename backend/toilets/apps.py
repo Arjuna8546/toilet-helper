@@ -1,5 +1,9 @@
+# toilets/apps.py
 from django.apps import AppConfig
 
-
 class ToiletsConfig(AppConfig):
-    name = 'toilets'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "toilets"
+
+    def ready(self):
+        import toilets.signals 
