@@ -1,6 +1,9 @@
 toilet_venv
 .env
+.env.example
 
 __pycache__
 
 db.sqlite3
+
+migrations

@@ -83,7 +83,7 @@ def _build_review_text(toilet) -> str:
 
 def invoke_toilet_agent(toilet_id: str) -> None:
     """
-    Called from toilets/signals.py in a background thread.
+    Called by the Celery worker after a toilet is published.
     Fetches the toilet, builds state, runs the LangGraph pipeline,
     and logs the result.
     """
@@ -169,6 +169,14 @@ def invoke_toilet_agent(toilet_id: str) -> None:
             result.get("hashtags"),
             result.get("video_url"),
         )
+
+        video_url = result.get("video_url")
+        if video_url:
+            # A generated reel belongs to the toilet, not to one source photo.
+            Toilet.objects.filter(pk=toilet_id).update(generated_video_url=video_url)
+            logger.info("[runner] Saved generated video URL for toilet_id=%s", toilet_id)
+        else:
+            logger.warning("[runner] Graph completed without a video URL for toilet_id=%s", toilet_id)
     except Exception:
         logger.error(
             "[runner] Graph invocation failed for toilet %s\n"

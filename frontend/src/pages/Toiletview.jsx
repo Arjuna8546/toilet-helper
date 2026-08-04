@@ -501,6 +501,24 @@ export default function ToiletView() {
                         )}
 
                         {/* ── Lightbox ─────────────────────────────────────────────────── */}
+                        {toilet.generated_video_url && (
+                            <div className="section-anim" style={{ animationDelay: "40ms" }}>
+                                <Section>
+                                    <div style={{ fontSize: 15, fontWeight: 800, color: TEXT_PRIMARY, marginBottom: 12 }}>
+                                        AI-generated toilet reel
+                                    </div>
+                                    <video
+                                        controls
+                                        preload="metadata"
+                                        src={toilet.generated_video_url}
+                                        style={{ width: "100%", display: "block", borderRadius: 12, background: "#000", maxHeight: 520 }}
+                                    >
+                                        Your browser does not support video playback.
+                                    </video>
+                                </Section>
+                            </div>
+                        )}
+
                         {lightbox && (
                             <div
                                 onClick={() => setLightbox(false)}

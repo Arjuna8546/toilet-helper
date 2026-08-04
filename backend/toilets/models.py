@@ -73,6 +73,7 @@ class Toilet(models.Model):
     created_at   = models.DateTimeField(auto_now_add=True)
     updated_at   = models.DateTimeField(auto_now=True)
     published_at = models.DateTimeField(null=True, blank=True)
+    generated_video_url = models.URLField(max_length=1000, blank=True)
 
     class Meta:
         ordering = ['-created_at']

@@ -31,7 +31,7 @@ class ToiletSerializer(serializers.ModelSerializer):
             'has_western_toilet', 'has_indian_toilet',
             'has_baby_changing', 'has_parking',
             'verification_count', 'photos', 'cover_photo_url',
-            'avg_cleanliness', 'review_count',
+            'avg_cleanliness', 'review_count', 'generated_video_url',
             'created_at', 'updated_at', 'published_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'verification_count']

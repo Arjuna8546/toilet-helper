@@ -1,32 +1,38 @@
-import threading
-from django.db.models.signals import post_save
+from django.db import transaction
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
-from .models import Toilet, ToiletStatus
 
+from .models import Toilet, ToiletStatus
 
 
 @receiver(post_save, sender=Toilet)
 def trigger_agent_on_publish(sender, instance: Toilet, created: bool, **kwargs):
-
-    # ── Guard 1: only act when status is PUBLISHED ────────────────────────────
-    if instance.status != ToiletStatus.PUBLISHED:
+    """Queue reel generation after a toilet is published."""
+    if (
+        instance.status != ToiletStatus.PUBLISHED
+        or getattr(instance, "_was_published", False)
+    ):
         return
 
-    # ── Capture the pk NOW — never pass the ORM instance into a thread ────────
-    # Django ORM objects are not thread-safe. The instance could be garbage
-    # collected or its DB connection closed by the time the thread runs.
-    # A plain string pk is safe to pass across thread boundaries.
     toilet_id = str(instance.pk)
 
-    # ── Define what the thread will actually do ───────────────────────────────
-    def run_agent():
-        from toilet_agents.runner import invoke_toilet_agent   # local import
-        invoke_toilet_agent(toilet_id)
+    def enqueue_reel() -> None:
+        from toilets.tasks import generate_toilet_reel
 
-    # ── Spawn the thread ──────────────────────────────────────────────────────
-    thread = threading.Thread(
-        target=run_agent,
-        daemon=True,                          # dies if the main process exits
-        name=f"agent-{toilet_id}",            # visible in thread dumps / logs
-    )
-    thread.start()
+        generate_toilet_reel.delay(toilet_id)
+
+    # Do not let a worker read the row until the publishing transaction commits.
+    transaction.on_commit(enqueue_reel)
+
+
+@receiver(pre_save, sender=Toilet)
+def remember_previous_publication_state(sender, instance: Toilet, **kwargs):
+    """Allow the post-save handler to enqueue only on a status transition."""
+    if not instance.pk:
+        instance._was_published = False
+        return
+
+    instance._was_published = sender.objects.filter(
+        pk=instance.pk,
+        status=ToiletStatus.PUBLISHED,
+    ).exists()
