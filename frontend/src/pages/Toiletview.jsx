@@ -315,6 +315,9 @@ export default function ToiletView() {
     );
 
     const photos = toilet.photos || [];
+    const hasGeneratedVideo = Boolean(toilet.generated_video_url);
+    const activeMediaIsVideo = hasGeneratedVideo && activePhoto === photos.length;
+    const mediaCount = photos.length + (hasGeneratedVideo ? 1 : 0);
     const reviews = toilet.reviews || [];
     const features = [
         { label: "Wheelchair Accessible", active: toilet.is_wheelchair_accessible },
@@ -429,7 +432,7 @@ export default function ToiletView() {
                     >
 
                         {/* ── Photos card ─────────────────────────────────────────────── */}
-                        {photos.length > 0 && (
+                        {mediaCount > 0 && (
                             <div className="section-anim" style={{ animationDelay: "20ms" }}>
                                 <Section>
                                     {/* Hero image */}
@@ -437,14 +440,16 @@ export default function ToiletView() {
                                         position: "relative", borderRadius: 12, overflow: "hidden",
                                         height: 220, background: SURFACE, marginBottom: 10,
                                     }}>
-                                        <img
-                                            src={photos[activePhoto]?.image_url}
-                                            alt={toilet.name}
-                                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                                        />
+                                        {activeMediaIsVideo ? (
+                                            <video controls preload="metadata" src={toilet.generated_video_url} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", background: "#000" }}>
+                                                Your browser does not support video playback.
+                                            </video>
+                                        ) : (
+                                            <img src={photos[activePhoto]?.image_url} alt={toilet.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                                        )}
 
                                         {/* Expand / fullscreen icon */}
-                                        <button
+                                        {!activeMediaIsVideo && <button
                                             onClick={() => setLightbox(true)}
                                             title="View full photo"
                                             aria-label="View full photo"
@@ -460,8 +465,10 @@ export default function ToiletView() {
                                             onMouseLeave={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.50)"}
                                         >⛶</button>
 
+                                        }
+
                                         {/* Counter */}
-                                        {photos.length > 1 && (
+                                        {mediaCount > 1 && (
                                             <div style={{
                                                 position: "absolute", bottom: 10, right: 10,
                                                 background: "rgba(0,0,0,0.50)", color: WHITE,
@@ -469,13 +476,13 @@ export default function ToiletView() {
                                                 padding: "4px 10px", borderRadius: 99,
                                                 backdropFilter: "blur(4px)",
                                             }}>
-                                                {activePhoto + 1} / {photos.length}
+                                                {activePhoto + 1} / {mediaCount}
                                             </div>
                                         )}
                                     </div>
 
                                     {/* Thumbnail strip */}
-                                    {photos.length > 1 && (
+                                    {mediaCount > 1 && (
                                         <div style={{
                                             display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2,
                                         }}>
@@ -494,6 +501,19 @@ export default function ToiletView() {
                                                     <img src={p.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                                                 </div>
                                             ))}
+                                            {hasGeneratedVideo && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setActivePhoto(photos.length)}
+                                                    aria-label="Play generated video"
+                                                    style={{
+                                                        flexShrink: 0, width: 58, height: 58, borderRadius: 8,
+                                                        cursor: "pointer", border: `2.5px solid ${activeMediaIsVideo ? BRAND : "transparent"}`,
+                                                        background: "#111827", color: WHITE, fontSize: 20,
+                                                        transform: activeMediaIsVideo ? "scale(1.05)" : "scale(1)",
+                                                    }}
+                                                >Play</button>
+                                            )}
                                         </div>
                                     )}
                                 </Section>
@@ -501,24 +521,6 @@ export default function ToiletView() {
                         )}
 
                         {/* ── Lightbox ─────────────────────────────────────────────────── */}
-                        {toilet.generated_video_url && (
-                            <div className="section-anim" style={{ animationDelay: "40ms" }}>
-                                <Section>
-                                    <div style={{ fontSize: 15, fontWeight: 800, color: TEXT_PRIMARY, marginBottom: 12 }}>
-                                        AI-generated toilet reel
-                                    </div>
-                                    <video
-                                        controls
-                                        preload="metadata"
-                                        src={toilet.generated_video_url}
-                                        style={{ width: "100%", display: "block", borderRadius: 12, background: "#000", maxHeight: 520 }}
-                                    >
-                                        Your browser does not support video playback.
-                                    </video>
-                                </Section>
-                            </div>
-                        )}
-
                         {lightbox && (
                             <div
                                 onClick={() => setLightbox(false)}
