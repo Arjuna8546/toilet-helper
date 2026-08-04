@@ -16,6 +16,44 @@ import "@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css";
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
 const ERNAKULAM = { lat: 9.9816, lng: 76.2999 };
+const BOUNDS_PADDING = 1.75;
+const MOVE_DEBOUNCE_MS = 700;
+const MOVEMENT_THRESHOLD = 0.12;
+
+function toBoundsBox(bounds) {
+  return {
+    north: bounds.getNorth(), south: bounds.getSouth(),
+    east: bounds.getEast(), west: bounds.getWest(),
+  };
+}
+
+function padBounds(bounds, factor = BOUNDS_PADDING) {
+  const latPadding = (bounds.north - bounds.south) * (factor - 1) / 2;
+  const lngPadding = (bounds.east - bounds.west) * (factor - 1) / 2;
+  return {
+    north: bounds.north + latPadding, south: bounds.south - latPadding,
+    east: bounds.east + lngPadding, west: bounds.west - lngPadding,
+  };
+}
+
+function containsBounds(outer, inner) {
+  return outer && inner.north <= outer.north && inner.south >= outer.south
+    && inner.east <= outer.east && inner.west >= outer.west;
+}
+
+function changedEnough(previous, next) {
+  if (!previous) return true;
+  const previousLatSpan = previous.north - previous.south;
+  const previousLngSpan = previous.east - previous.west;
+  const previousLatCenter = (previous.north + previous.south) / 2;
+  const previousLngCenter = (previous.east + previous.west) / 2;
+  const nextLatCenter = (next.north + next.south) / 2;
+  const nextLngCenter = (next.east + next.west) / 2;
+  return Math.abs(nextLatCenter - previousLatCenter) / previousLatSpan > MOVEMENT_THRESHOLD
+    || Math.abs(nextLngCenter - previousLngCenter) / previousLngSpan > MOVEMENT_THRESHOLD
+    || Math.abs((next.north - next.south) / previousLatSpan - 1) > MOVEMENT_THRESHOLD
+    || Math.abs((next.east - next.west) / previousLngSpan - 1) > MOVEMENT_THRESHOLD;
+}
 
 // ── Brand colors ────────────────────────────────────────────────────────────
 const BRAND = "#10B57E";
@@ -228,6 +266,9 @@ export default function UserHome() {
   const map = useRef(null);
   const markersRef = useRef({});
   const moveTimeoutRef = useRef(null);
+  const boundsRequestRef = useRef(null);
+  const fetchedBoundsRef = useRef(null);
+  const lastCheckedBoundsRef = useRef(null);
 
   // Refs to hold geocoder containers so we can mount the same geocoder instance
   // into both the desktop sidebar and the mobile sheet header.
@@ -246,27 +287,37 @@ export default function UserHome() {
   // ── Load toilets for current map bounds ──────────────────────────────────
   const loadToiletsForBounds = useCallback(async (mapInstance, userLoc) => {
     if (!mapInstance) return;
-    const bounds = mapInstance.getBounds();
+    const visibleBounds = toBoundsBox(mapInstance.getBounds());
+
+    // Reuse the previous result while the visible map remains within its
+    // larger, padded request area.
+    if (containsBounds(fetchedBoundsRef.current, visibleBounds)) return;
+
+    boundsRequestRef.current?.abort();
+    const controller = new AbortController();
+    boundsRequestRef.current = controller;
+    const requestBounds = padBounds(visibleBounds);
     setLoading(true);
     try {
       const params = {
-        north: bounds.getNorth(),
-        south: bounds.getSouth(),
-        east: bounds.getEast(),
-        west: bounds.getWest(),
+        ...requestBounds,
       };
       if (userLoc) {
         params.lat = userLoc.lat;
         params.lng = userLoc.lng;
       }
-      const res = await fetchToiletsInBounds(params);
+      const res = await fetchToiletsInBounds(params, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       const data = res.data || [];
+      fetchedBoundsRef.current = requestBounds;
       setToilets(data);
       updateMarkers(mapInstance, data);
     } catch (err) {
-      console.error("Failed to load toilets:", err);
+      if (!controller.signal.aborted) console.error("Failed to load toilets:", err);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && boundsRequestRef.current === controller) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -392,9 +443,12 @@ export default function UserHome() {
 
       m.on("moveend", () => {
         clearTimeout(moveTimeoutRef.current);
+        const currentBounds = toBoundsBox(m.getBounds());
+        if (!changedEnough(lastCheckedBoundsRef.current, currentBounds)) return;
+        lastCheckedBoundsRef.current = currentBounds;
         moveTimeoutRef.current = setTimeout(() => {
           loadToiletsForBounds(m, center !== ERNAKULAM ? center : null);
-        }, 400);
+        }, MOVE_DEBOUNCE_MS);
       });
     };
 
@@ -419,6 +473,7 @@ export default function UserHome() {
 
     return () => {
       clearTimeout(moveTimeoutRef.current);
+      boundsRequestRef.current?.abort();
       // Remove geocoder before removing map to avoid stale refs
       if (geocoderRef.current && map.current) {
         try { geocoderRef.current.onRemove(); } catch (_) {}

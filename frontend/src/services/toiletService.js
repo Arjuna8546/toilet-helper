@@ -5,7 +5,7 @@ import api from "../lib/axios";
 
 export const fetchToilets = () => api.get("/toilets/");
 
-export const fetchToiletById = (id) => api.get(`/toilets/${id}/`);
+export const fetchToiletById = (id, config = {}) => api.get(`/toilets/${id}/`, config);
 
 export const createToilet = (data) => api.post("/toilets/", data);
 
@@ -16,8 +16,11 @@ export const deleteToilet = (id) => api.delete(`/toilets/${id}/`);
 export const fetchNearbyToilets = ({ lat, lng, radius = 5000 }) =>
   api.get("/toilets/nearby/", { params: { lat, lng, radius } });
 
-export const fetchToiletsInBounds = ({ north, south, east, west, lat, lng }) =>
-  api.get("/toilets/in_bounds/", { params: { north, south, east, west, lat, lng } });
+export const fetchToiletsInBounds = ({ north, south, east, west, lat, lng }, config = {}) =>
+  api.get("/toilets/in_bounds/", {
+    ...config,
+    params: { ...config.params, north, south, east, west, lat, lng },
+  });
 
 
 // ─── Photos ─────────────────────────────────────────────────────────────────
