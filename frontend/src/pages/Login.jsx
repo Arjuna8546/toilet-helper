@@ -25,7 +25,6 @@ function Login() {
     try {
       const res = await api.post("/auth/google/", { token: credentialResponse.credential });
       dispatch(loginSuccess({ token: res.data.token, user: res.data.user }));
-      localStorage.setItem("token", res.data.token);
       navigate(res.data.user.is_admin ? "/admin-dashboard" : "/home");
     } catch (requestError) {
       console.error("Google Login Error:", requestError);
