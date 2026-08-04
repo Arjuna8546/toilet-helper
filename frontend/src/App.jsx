@@ -5,7 +5,7 @@ import { useSelector } from "react-redux";
 import Login from "./pages/Login";
 import AdminDashboard from "./pages/AdminDashboard";
 import AddToilet from "./pages/AddToilet";
-import AllToilets from "./pages/AllToilets";
+import AllToilets from "./pages/Alltoilets";
 import UserHome from "./pages/UserHome";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ToiletView from "./pages/Toiletview";

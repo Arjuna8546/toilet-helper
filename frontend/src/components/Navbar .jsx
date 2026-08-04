@@ -7,6 +7,7 @@
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { logout } from "../features/auth/authSlice";
+import logo from "../assets/logo.png";
 
 // ── Brand tokens (keep in sync with your theme file / design tokens) ──────
 const BRAND       = "#10B57E";
@@ -46,17 +47,30 @@ export default function Navbar({ onLogout, children }) {
       }}
     >
       {/* ── Brand ─────────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div
+        onClick={() => navigate("/home")}
+        style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+        title="Go to home"
+      >
         <span
           style={{
-            width: 8,
-            height: 8,
+            width: 34,
+            height: 34,
             borderRadius: "50%",
-            background: BRAND,
-            display: "inline-block",
+            background: BRAND_LIGHT,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             flexShrink: 0,
+            overflow: "hidden",
           }}
-        />
+        >
+          <img
+            src={logo}
+            alt="peeസ് logo"
+            style={{ width: 27, height: 27, objectFit: "contain", display: "block" }}
+          />
+        </span>
         <span
           style={{
             fontWeight: 800,
